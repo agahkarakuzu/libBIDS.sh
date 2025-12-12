@@ -410,6 +410,52 @@ _libBIDSsh_load_custom_entities() {
   shopt -u nullglob
 }
 
+_libBIDSsh_load_custom_suffixes() {
+  # Load custom suffixes from JSON configuration files
+  # JSON files should be placed in ./custom directory
+  # Each JSON file should contain a "suffixes" array with suffix strings
+  # Example: "suffixes": ["mysuffix", "customdata", "special"]
+
+  local script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  local plugin_dir="${script_dir}/custom"
+
+  # Initialize global array if not already defined
+  if [[ -z "${CUSTOM_SUFFIXES+x}" ]]; then
+    declare -ga CUSTOM_SUFFIXES
+  fi
+  CUSTOM_SUFFIXES=()
+
+  if [[ ! -d "$plugin_dir" ]]; then
+    return 0
+  fi
+
+  shopt -s nullglob
+  local json_files=("$plugin_dir"/*.json)
+  shopt -u nullglob
+
+  if ((${#json_files[@]} == 0)); then
+    return 0
+  fi
+
+  if ! command -v jq >/dev/null 2>&1; then
+    echo "Error: jq is required for custom suffix support" >&2
+    return 1
+  fi
+
+  for json_file in "${json_files[@]}"; do
+    if [[ -f "$json_file" ]]; then
+      # Parse JSON array directly
+      while IFS= read -r suffix; do
+        if [[ -n "$suffix" ]]; then
+          CUSTOM_SUFFIXES+=("$suffix")
+        fi
+      done < <(
+        jq -r '.suffixes[]?' "$json_file" 2>/dev/null
+      )
+    fi
+  done
+}
+
 libBIDSsh_parse_bids_to_csv() {
   # Parse a BIDS directory structure into CSV format
   # Usage: libBIDSsh_parse_bids_to_csv "/path/to/bids/dataset"
@@ -423,7 +469,10 @@ libBIDSsh_parse_bids_to_csv() {
 
   # Load custom entities from plugins
   _libBIDSsh_load_custom_entities
-  
+
+  # Load custom suffixes from plugins
+  _libBIDSsh_load_custom_suffixes
+
   # Entities components
   # Extracted from schema with generate_entity_patterns.sh
   local entities=(
@@ -467,7 +516,14 @@ libBIDSsh_parse_bids_to_csv() {
 
   # Suffixes from schema.json
   # jq -r .objects.suffixes.[].value schema.json | paste -s -d'|'
-  suffixes+="_@(2PE|BF|Chimap|CARS|CONF|DIC|DF|FLAIR|FLASH|FLUO|IRT1|M0map|MEGRE|MESE|MP2RAGE|MPE|MPM|MTR|MTRmap|MTS|MTVmap|MTsat|MWFmap|NLO|OCT|PC|PD|PDT2|PDmap|PDw|PLI|R1map|R2map|R2starmap|RB1COR|RB1map|S0map|SEM|SPIM|SR|T1map|T1rho|T1w|T2map|T2star|T2starmap|T2starw|T2w|TB1AFI|TB1DAM|TB1EPI|TB1RFM|TB1SRGE|TB1TFL|TB1map|TEM|UNIT1|VFA|angio|asl|aslcontext|asllabeling|beh|blood|bold|cbv|channels|coordsystem|defacemask|descriptions|dseg|dwi|eeg|electrodes|epi|events|fieldmap|headshape|XPCT|ieeg|inplaneT1|inplaneT2|m0scan|magnitude|magnitude1|magnitude2|markers|mask|meg|motion|mrsi|mrsref|nirs|noRF|optodes|pet|phase|phase1|phase2|phasediff|photo|physio|probseg|sbref|scans|sessions|stim|svs|uCT|unloc)"
+  local suffix_list="2PE|BF|Chimap|CARS|CONF|DIC|DF|FLAIR|FLASH|FLUO|IRT1|M0map|MEGRE|MESE|MP2RAGE|MPE|MPM|MTR|MTRmap|MTS|MTVmap|MTsat|MWFmap|NLO|OCT|PC|PD|PDT2|PDmap|PDw|PLI|R1map|R2map|R2starmap|RB1COR|RB1map|S0map|SEM|SPIM|SR|T1map|T1rho|T1w|T2map|T2star|T2starmap|T2starw|T2w|TB1AFI|TB1DAM|TB1EPI|TB1RFM|TB1SRGE|TB1TFL|TB1map|TEM|UNIT1|VFA|angio|asl|aslcontext|asllabeling|beh|blood|bold|cbv|channels|coordsystem|defacemask|descriptions|dseg|dwi|eeg|electrodes|epi|events|fieldmap|headshape|XPCT|ieeg|inplaneT1|inplaneT2|m0scan|magnitude|magnitude1|magnitude2|markers|mask|meg|motion|mrsi|mrsref|nirs|noRF|optodes|pet|phase|phase1|phase2|phasediff|photo|physio|probseg|sbref|scans|sessions|stim|svs|uCT|unloc"
+
+  # Add custom suffixes from plugins
+  for custom_suffix in "${CUSTOM_SUFFIXES[@]}"; do
+    suffix_list+="|${custom_suffix}"
+  done
+
+  suffixes="_@(${suffix_list})"
 
   # Allowed extensions
   # jq -r .objects.extensions.[].value schema.json | paste -s -d'|'
