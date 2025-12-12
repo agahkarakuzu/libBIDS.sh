@@ -346,20 +346,25 @@ libBIDSsh_extension_json_rows_to_column_json_path() {
 
 _libBIDSsh_load_custom_entities() {
   # Load custom entities from JSON configuration files
-  # JSON files should be placed in ./custom directory
+  # Usage: _libBIDSsh_load_custom_entities [custom_dir]
+  # Arguments:
+  #   custom_dir: (optional) Path to directory containing custom JSON files
+  #               Defaults to ./custom relative to script location
   # Each JSON file should contain an "entities" array with objects having:
   #   - name: entity short name
   #   - display_name: entity display name for CSV headers
   #   - pattern: bash glob pattern for matching
 
-  
-  local script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-  local plugin_dir="${script_dir}/custom"
-  if ! command -v jq >/dev/null 2>&1; then
-    echo "Error: jq is required for custom entity support" >&2
-    return 1
+  local custom_dir="${1:-}"
+
+  # Determine plugin directory
+  if [[ -n "$custom_dir" ]]; then
+    local plugin_dir="$custom_dir"
+  else
+    local script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    local plugin_dir="${script_dir}/custom"
   fi
-  
+
   # Initialize global arrays if not already defined
   if [[ -z "${CUSTOM_ENTITIES+x}" ]]; then
     declare -gA CUSTOM_ENTITIES
@@ -373,11 +378,11 @@ _libBIDSsh_load_custom_entities() {
     declare -ga CUSTOM_ENTITY_DISPLAY_NAMES
   fi
   CUSTOM_ENTITY_DISPLAY_NAMES=()
-  
+
   if [[ ! -d "$plugin_dir" ]]; then
     return 0
   fi
-  
+
   shopt -s nullglob
   local json_files=("$plugin_dir"/*.json)
   shopt -u nullglob
@@ -391,7 +396,6 @@ _libBIDSsh_load_custom_entities() {
     return 1
   fi
 
-  shopt -s nullglob
   for json_file in "${json_files[@]}"; do
     if [[ -f "$json_file" ]]; then
       # Parse JSON and extract entity definitions
@@ -407,17 +411,26 @@ _libBIDSsh_load_custom_entities() {
       )
     fi
   done
-  shopt -u nullglob
 }
 
 _libBIDSsh_load_custom_suffixes() {
   # Load custom suffixes from JSON configuration files
-  # JSON files should be placed in ./custom directory
+  # Usage: _libBIDSsh_load_custom_suffixes [custom_dir]
+  # Arguments:
+  #   custom_dir: (optional) Path to directory containing custom JSON files
+  #               Defaults to ./custom relative to script location
   # Each JSON file should contain a "suffixes" array with suffix strings
   # Example: "suffixes": ["mysuffix", "customdata", "special"]
 
-  local script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-  local plugin_dir="${script_dir}/custom"
+  local custom_dir="${1:-}"
+
+  # Determine plugin directory
+  if [[ -n "$custom_dir" ]]; then
+    local plugin_dir="$custom_dir"
+  else
+    local script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    local plugin_dir="${script_dir}/custom"
+  fi
 
   # Initialize global array if not already defined
   if [[ -z "${CUSTOM_SUFFIXES+x}" ]]; then
@@ -458,20 +471,26 @@ _libBIDSsh_load_custom_suffixes() {
 
 libBIDSsh_parse_bids_to_csv() {
   # Parse a BIDS directory structure into CSV format
-  # Usage: libBIDSsh_parse_bids_to_csv "/path/to/bids/dataset"
+  # Usage: libBIDSsh_parse_bids_to_csv "/path/to/bids/dataset" [custom_dir]
+  # Arguments:
+  #   bidspath: Path to BIDS dataset directory
+  #   custom_dir: (optional) Path to directory containing custom entity/suffix JSON files
+  #               Defaults to ./custom relative to script location
   # Returns: CSV data through stdout with columns for each BIDS entity
   # Example:
   #   bids_csv=$(libBIDSsh_parse_bids_to_csv "/path/to/bids")
+  #   bids_csv=$(libBIDSsh_parse_bids_to_csv "/path/to/bids" "/path/to/custom/configs")
   local bidspath=$1
+  local custom_dir="${2:-}"
 
   # Build the pattern piece by piece
   local base_pattern="*"
 
   # Load custom entities from plugins
-  _libBIDSsh_load_custom_entities
+  _libBIDSsh_load_custom_entities "$custom_dir"
 
   # Load custom suffixes from plugins
-  _libBIDSsh_load_custom_suffixes
+  _libBIDSsh_load_custom_suffixes "$custom_dir"
 
   # Entities components
   # Extracted from schema with generate_entity_patterns.sh
